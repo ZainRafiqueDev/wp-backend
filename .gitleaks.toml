@@ -22,4 +22,7 @@ regexes = [
   # CS-10: tests/unit/logRedaction.test.ts canary proving Stripe-key-shaped
   # values are redacted from logs. Fake; matches only this exact string.
   '''sk_live_CANARYSTRIPE123''',
+  # tests/integration/workspaceMembers.integration.test.ts: fake Stripe-key-
+  # shaped Authorization header proving action headers are masked. Fake.
+  '''sk_live_abcdef123456789''',
 ]
