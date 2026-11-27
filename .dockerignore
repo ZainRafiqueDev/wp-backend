@@ -27,3 +27,10 @@ scripts/*.sql
 .idea
 local_schema_dump.sql
 db;C
+
+# CI/security tooling, never needed at runtime. .gitleaks.toml holds fake
+# Stripe-key-shaped allowlist strings that would trip the image secret scan.
+.gitleaks.toml
+.trivyignore
+.githooks
+scripts/security
