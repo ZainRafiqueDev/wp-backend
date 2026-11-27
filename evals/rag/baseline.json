@@ -1,0 +1,22 @@
+{
+  "generatedAt": "2026-09-28T17:41:33.032Z",
+  "pairCount": 64,
+  "retrieval": {
+    "recallAt5": 1,
+    "recallAt10": 1,
+    "precisionAt5": 0.7194444444444446,
+    "mrr": 0.9,
+    "ndcgAt10": 0.9257906338095278,
+    "citationCoverage": 1
+  },
+  "quality": {
+    "groundedAnswerRate": 1,
+    "hallucinationRate": 0,
+    "isolationViolations": 0
+  },
+  "latency": {
+    "p50Ms": 34,
+    "p95Ms": 54,
+    "meanMs": 34.9375
+  }
+}

@@ -1,0 +1,16 @@
+# CS-14: changes to CI/CD, security tooling, secret-scan config and the
+# files that control what gets installed need the owner's review.
+# CODEOWNERS only blocks merges when "Require review from Code Owners" is
+# enabled on main (docs/CI_PIPELINE_GUIDE.md). To add a second reviewer, put
+# their @login after Zain's on the lines below.
+/.github/                  @ZainRafiqueDev
+/scripts/security/         @ZainRafiqueDev
+/.gitleaks.toml            @ZainRafiqueDev
+/.gitattributes            @ZainRafiqueDev
+/docs/CI_CD_SECURITY.md    @ZainRafiqueDev
+/.npmrc                            @ZainRafiqueDev
+/.githooks/                        @ZainRafiqueDev
+/package-lock.json                 @ZainRafiqueDev
+/Dockerfile                        @ZainRafiqueDev
+/.trivyignore                      @ZainRafiqueDev
+/.dockerignore                     @ZainRafiqueDev

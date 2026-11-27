@@ -1,0 +1,16 @@
+node_modules
+dist
+*.log
+.DS_Store
+.claude
+/claude
+/var/
+evals/rag/artifacts/
+local_schema_dump.sql
+.env
+.env.local
+.env.*
+!.env.example
+!.env.test.example
+# Audit 2026-11-27: test coverage output was sitting in the working tree.
+coverage/

@@ -1,0 +1,470 @@
+name: CI/CD
+
+# integrity runs first (plain `node`, before any dependency install): auto-run
+# tasks, hidden payloads, malware patterns (catbox/pastebin loaders, fake fonts,
+# obfuscation, install scripts) and lockfile integrity. test, security and
+# antivirus (ClamAV) run on every push/PR to main and need integrity. Every
+# `npm ci` here uses --ignore-scripts, so no dependency install script ever
+# runs in CI. build (Docker) needs all three, then scans both images with
+# Trivy (blocking on fixable CRITICAL vulnerabilities). publish re-builds
+# and pushes the image to GHCR, and only on a push to main in the owner's repo
+# (never on PRs, forks or Dependabot). It is the only job with packages: write.
+#
+# No deploy-to-a-live-host step here on purpose — this backend's actual
+# hosting target isn't chosen yet (see DEPLOYMENT.md). ghcr.io/<owner>/
+# chatmate360-backend:{sha,latest} is ready for whatever host is picked to
+# pull from.
+#
+# Security rules for this file (CS-14, see docs/CI_CD_SECURITY.md):
+#   - never put ${{ github.event.* }} (or any other user-controlled value)
+#     inside `run:`; pass it through `env:` and quote "$VAR".
+#   - top-level permissions are read-only; grant more per job only.
+#   - every action is pinned to a full commit SHA with its tag in a comment;
+#     Dependabot (github-actions) proposes updated pins.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# PR runs are cancelled by newer pushes to the same PR. Runs on main are never
+# cancelled mid-way (that could cut the GHCR push between :sha and :latest).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  integrity:
+    name: Repository integrity (auto-run / hidden payload check)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      # Plain node from the runner image, no install: nothing from the repo's
+      # dependency tree or package lifecycle scripts runs before this check.
+      - name: Check for auto-run tasks, hidden code and untracked script entry points
+        run: node scripts/security/check-autorun.mjs
+
+      - name: Self-test the check
+        run: node scripts/security/check-autorun.selftest.mjs
+
+      # Known payload hosts (catbox, pastebin raw, chat webhooks, ngrok, ...),
+      # raw public-IP URLs, install-time lifecycle scripts, obfuscated code,
+      # base64 blobs, decode-and-eval, tool configs that spawn processes, fake
+      # font/image files, Trojan Source characters and tracked executables.
+      - name: Check for malware patterns
+        run: node scripts/security/check-malware-patterns.mjs
+
+      # Every dependency from registry.npmjs.org with a sha512 hash, no git /
+      # URL dependencies, no registry overrides, and no NEW dependency that
+      # wants an install script without being reviewed into the allowlist.
+      - name: Check lockfile integrity and install scripts
+        run: node scripts/security/check-supply-chain.mjs
+
+      - name: Self-test the malware and lockfile checks
+        run: node scripts/security/check-supply-chain-and-malware.selftest.mjs
+
+  test:
+    name: Typecheck & test
+    needs: [integrity]
+    runs-on: ubuntu-latest
+    # The suite takes ~9 min on the runner, plus the Chromium install.
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        # pgvector/pgvector:pg16 — a drop-in postgres:16 image that also
+        # ships the pgvector extension, matching docker-compose.yml's local
+        # dev setup. Without this, `create extension if not exists vector`
+        # and product_catalog_cache's CREATE TABLE (its embedding column is
+        # type vector) both fail during schema.sql apply — psql doesn't
+        # stop on error by default, so the rest of the schema still applies
+        # and every OTHER table exists, just not this one, which is exactly
+        # what caused the 3 commerce-catalog test failures this fixes.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: chatmate360_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # --ignore-scripts: no dependency's preinstall/postinstall ever runs.
+      - name: Install dependencies (install scripts disabled)
+        run: npm ci --ignore-scripts
+
+      # CS-08's renderPage SSRF/budget tests drive a real headless Chromium
+      # against local loopback servers. Without a browser, renderPage fails
+      # closed and returns "", so the tests fail. Installs the Chromium build
+      # pinned by the locked `playwright` version (from Microsoft's Playwright
+      # CDN) plus its OS libraries. Runs before the test step, so CS-17's test
+      # egress block is not involved.
+      - name: Install Chromium for crawler render tests
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Apply schema to the test database
+        run: psql "$DATABASE_URL" -f db/schema.sql
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chatmate360_test
+        # psql ships on the ubuntu-latest runner image already — no extra install needed.
+
+      - name: Apply the CS-15 RLS lockdown (step 3, not part of schema.sql)
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/migrations/20261115_rls_2_lockdown.sql
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chatmate360_test
+
+      - name: Set per-run role passwords
+        # CS-15: db/rls.sql creates chatmate360_app / chatmate360_system
+        # without a password. Give them random, masked, per-run ones here.
+        run: |
+          APP_PW="$(openssl rand -hex 24)"
+          SYS_PW="$(openssl rand -hex 24)"
+          echo "::add-mask::$APP_PW"
+          echo "::add-mask::$SYS_PW"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1             -c "alter role chatmate360_app with password '$APP_PW'"             -c "alter role chatmate360_system with password '$SYS_PW'"
+          echo "TEST_DATABASE_URL=postgresql://chatmate360_app:$APP_PW@localhost:5432/chatmate360_test" >> "$GITHUB_ENV"
+          echo "TEST_SYSTEM_DATABASE_URL=postgresql://chatmate360_system:$SYS_PW@localhost:5432/chatmate360_test" >> "$GITHUB_ENV"
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chatmate360_test
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test (unit + integration, with coverage)
+        run: npm run test:coverage
+        env:
+          TEST_REDIS_URL: redis://localhost:6379
+          # Deliberately no AI provider keys — the suite exercises the
+          # deterministic fallback path on purpose, not real external calls.
+          # CI-only dummy key (never used against real data — the test DB
+          # is torn down every run) so encryptSecret (Bookly/WooCommerce
+          # credential storage tests) has something valid to encrypt
+          # against. Stored as a repo secret rather than a literal here —
+          # not because the value itself is sensitive, but because a
+          # credential-shaped string committed in plaintext is exactly what
+          # a secret scanner is supposed to flag, regardless of what it's
+          # actually used for. Unrelated to whatever INTEGRATION_ENCRYPTION_KEY
+          # is set on a real deployed host. Dependabot PRs only see it if it
+          # is ALSO added as a Dependabot secret (docs/CI_CD_SECURITY.md).
+          INTEGRATION_ENCRYPTION_KEY: ${{ secrets.INTEGRATION_ENCRYPTION_KEY }}
+
+      # Catches "tests pass but the app no longer starts" (a bad import, an
+      # env/zod schema change, a dependency that needs an install script).
+      - name: Smoke test — the API boots and answers /health
+        env:
+          NODE_ENV: development
+          PORT: "4000"
+          REDIS_URL: redis://localhost:6379
+          FRONTEND_URL: http://localhost:3000
+        # Runs as the unprivileged app/system roles from "Set per-run role
+        # passwords" (TEST_DATABASE_URL / TEST_SYSTEM_DATABASE_URL).
+        run: |
+          set -euo pipefail
+          DATABASE_URL="$TEST_DATABASE_URL" SYSTEM_DATABASE_URL="$TEST_SYSTEM_DATABASE_URL" \
+            JWT_SECRET="$(openssl rand -hex 32)" node --import tsx src/index.ts > "$RUNNER_TEMP/api.log" 2>&1 &
+          API_PID=$!
+          ok=""
+          for i in $(seq 1 45); do
+            if ! kill -0 "$API_PID" 2>/dev/null; then break; fi
+            code="$(curl -s -o "$RUNNER_TEMP/health.json" -w '%{http_code}' http://localhost:4000/health || true)"
+            if [ "$code" = "200" ] && grep -q '"ok":true' "$RUNNER_TEMP/health.json"; then ok=1; break; fi
+            sleep 2
+          done
+          # A request that must be rejected by validation, not crash the app.
+          bad="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"email":"x"}' http://localhost:4000/auth/login || true)"
+          kill "$API_PID" 2>/dev/null || true
+          if [ -z "$ok" ] || [ "$bad" != "400" ]; then
+            echo "::error::API did not boot cleanly (health ok=${ok:-no}, invalid login -> $bad)"
+            tail -50 "$RUNNER_TEMP/api.log"
+            exit 1
+          fi
+          echo "API booted, /health ok, invalid input rejected with 400."
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+
+      - name: Upload RAG eval report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rag-eval-report
+          path: evals/rag/artifacts/
+          if-no-files-found: warn
+          retention-days: 14
+
+  security:
+    name: Dependency audit & secret scan
+    needs: [integrity]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0 # gitleaks needs the commits of the push/PR range
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # --ignore-scripts: no dependency's preinstall/postinstall ever runs.
+      - name: Install dependencies (install scripts disabled)
+        run: npm ci --ignore-scripts
+
+      # zod was upgraded to v4.6.7 on 2026-11-27, which fixes
+      # GHSA-mrhx-c7xc-m3w5, so the old time-boxed zod exception is gone and
+      # any high/critical advisory in a production dependency blocks.
+      - name: npm audit — production dependencies (blocking)
+        run: npm audit --omit=dev --audit-level=high
+
+      # Verifies the registry signatures (and provenance attestations, where
+      # published) of every installed package: a tarball that was tampered
+      # with after publishing, or served by a fake registry, fails here.
+      - name: npm audit signatures — package signatures and provenance (blocking)
+        run: npm audit signatures
+
+      - name: npm audit — full report, including devDependencies (non-blocking)
+        # Not gated: as of this writing, vitest's transitive esbuild/vite
+        # chain carries a dev-server-only advisory (GHSA-67mh-4wv8-2f99 —
+        # esbuild's dev server accepting arbitrary cross-origin requests)
+        # that npm inflates to "critical" via severity inheritance even
+        # though nothing here runs esbuild/vite as an exposed server. Real
+        # production-facing risk is covered by the blocking step above;
+        # this still surfaces devDependency findings in the log instead of
+        # hiding them, and dependabot.yml keeps devDependencies updated
+        # over time regardless.
+        run: npm audit || true
+
+      # gitleaks CLI run directly instead of gitleaks/gitleaks-action, which
+      # needs a paid GITLEAKS_LICENSE on organisation-owned repos (audit
+      # S2-005). Pinned by version AND by the SHA-256 from that release's
+      # gitleaks_<ver>_checksums.txt, so a swapped tarball fails the step.
+      - name: Install gitleaks (pinned version + checksum)
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          TARBALL="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$TARBALL" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${TARBALL}"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$TARBALL" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          tar -xzf "$RUNNER_TEMP/$TARBALL" -C "$RUNNER_TEMP/gitleaks" gitleaks
+          echo "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
+
+      # Scans only the commits this push/PR introduces (what the action did),
+      # not the whole history: old history has known, already-handled hits.
+      # Event values come in through env, never interpolated into the script.
+      - name: Secret scan (gitleaks)
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
+        run: |
+          set -euo pipefail
+          is_sha() { [[ "$1" =~ ^[0-9a-f]{40}$ ]] && [[ ! "$1" =~ ^0+$ ]]; }
+          if [ "$EVENT_NAME" = "pull_request" ] && is_sha "$PR_BASE_SHA" && is_sha "$PR_HEAD_SHA"; then
+            RANGE="${PR_BASE_SHA}..${PR_HEAD_SHA}"
+          elif is_sha "$PUSH_BEFORE" && is_sha "$PUSH_AFTER" && git cat-file -e "${PUSH_BEFORE}^{commit}" 2>/dev/null; then
+            RANGE="${PUSH_BEFORE}..${PUSH_AFTER}"
+          else
+            RANGE="-1 ${GITHUB_SHA}" # new branch / force push: scan the tip commit
+          fi
+          echo "gitleaks scanning: $RANGE"
+          gitleaks git --no-banner --redact --exit-code 1 \
+            --config .gitleaks.toml --log-opts="$RANGE" .
+
+  antivirus:
+    name: Antivirus scan (ClamAV)
+    needs: [integrity]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # node_modules is scanned too: ClamAV has signatures for known npm
+      # malware, and this is the code that ends up in the image.
+      - name: Install dependencies (install scripts disabled)
+        run: npm ci --ignore-scripts
+
+      # Official ClamAV image pinned by digest. A new named volume starts as a
+      # copy of the image's bundled virus definitions; freshclam then updates
+      # them to today's (if the mirror is unreachable the bundled ones are used
+      # and the log says so). The scan itself has no network and a read-only
+      # view of the code.
+      - name: Scan repository and dependencies
+        env:
+          CLAMAV_IMAGE: clamav/clamav@sha256:64e30c0bf976198024deb3dc6d5cfe2485fb969c0f73549ba0fdb364b9469614 # 1.5.5 (stable)
+        run: |
+          set -euo pipefail
+          docker volume create clamdb >/dev/null
+          docker run --rm -v clamdb:/var/lib/clamav --entrypoint sh "$CLAMAV_IMAGE" -c \
+            'freshclam --stdout || echo "::warning::freshclam failed; scanning with the bundled virus definitions"'
+          docker run --rm --network none -v clamdb:/var/lib/clamav:ro -v "$GITHUB_WORKSPACE:/scan:ro" \
+            --entrypoint clamscan "$CLAMAV_IMAGE" \
+            -r -i --max-filesize=100M --max-scansize=400M --alert-encrypted=no /scan
+
+  build:
+    name: Docker build & image scan
+    needs: [test, security, antivirus]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      # Docker image names must be lowercase; github.repository (used above
+      # for IMAGE_NAME) preserves the org/repo's real case
+      # (TheSolutionsTag/Chatmate360-Backend), which `docker build -t`
+      # rejects outright.
+      - name: Build images (api target + full/worker target)
+        run: |
+          IMAGE_NAME_LOWER="$(printf '%s' "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
+          docker build --target api -t "$IMAGE_NAME_LOWER:ci-api" .
+          docker build -t "$IMAGE_NAME_LOWER:ci" .
+          echo "IMAGE_NAME_LOWER=$IMAGE_NAME_LOWER" >> "$GITHUB_ENV"
+
+      # Trivy CLI pinned by version + SHA-256 instead of aquasecurity/trivy-action
+      # (that action's tags were hijacked in the March 2026 Trivy supply-chain
+      # attack, CVE-2026-33634). v0.76.2 is a release from after the incident.
+      - name: Install Trivy (pinned version + checksum)
+        env:
+          TRIVY_VERSION: 0.76.2
+          TRIVY_SHA256: bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf
+        run: |
+          set -euo pipefail
+          TARBALL="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$TARBALL" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${TARBALL}"
+          echo "${TRIVY_SHA256}  $RUNNER_TEMP/$TARBALL" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/trivy"
+          tar -xzf "$RUNNER_TEMP/$TARBALL" -C "$RUNNER_TEMP/trivy" trivy
+          echo "$RUNNER_TEMP/trivy" >> "$GITHUB_PATH"
+
+      # Blocking: a CRITICAL vulnerability that has a fix, or a secret baked
+      # into an image layer. Not blocking: HIGH and unfixed findings (listed
+      # in the log so they are visible). To accept one finding on purpose, add
+      # its ID to .trivyignore with a comment saying why and until when.
+      - name: Scan images (Trivy)
+        run: |
+          set -euo pipefail
+          for tag in ci-api ci; do
+            echo "::group::Trivy report for $tag (HIGH + CRITICAL, informational)"
+            trivy image --quiet --scanners vuln --severity HIGH,CRITICAL "$IMAGE_NAME_LOWER:$tag" || true
+            echo "::endgroup::"
+            trivy image --quiet --scanners vuln,secret --severity CRITICAL --ignore-unfixed \
+              --ignorefile .trivyignore --exit-code 1 "$IMAGE_NAME_LOWER:$tag"
+          done
+
+      - name: Scan Dockerfile and compose files for misconfiguration (informational)
+        run: trivy config --quiet --severity HIGH,CRITICAL . || true
+
+  publish:
+    name: Publish image to GHCR
+    needs: [build]
+    # Push to main in the owner's repository only: never PRs, forks or
+    # Dependabot. This is the only job that gets packages: write. It rebuilds
+    # the image instead of reusing build's, so no write token is ever present
+    # in a job that also runs for pull requests.
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      github.repository_owner == 'ZainRafiqueDev' &&
+      github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Compute lowercase image name
+        run: echo "IMAGE_NAME_LOWER=$(printf '%s' "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
+      - name: Build image
+        run: docker build -t "$IMAGE_NAME_LOWER:ci" .
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push to GHCR
+        run: |
+          set -euo pipefail
+          IMAGE="$REGISTRY/$IMAGE_NAME_LOWER"
+          docker tag "$IMAGE_NAME_LOWER:ci" "$IMAGE:$GITHUB_SHA"
+          docker tag "$IMAGE_NAME_LOWER:ci" "$IMAGE:latest"
+          docker push "$IMAGE:$GITHUB_SHA"
+          docker push "$IMAGE:latest"

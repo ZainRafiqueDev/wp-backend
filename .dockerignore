@@ -1,0 +1,29 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.git
+tests
+coverage
+vitest.config.ts
+.github
+
+# Not needed at runtime. Excluding them keeps the image small and stops local
+# data from being baked into it: var/ is local document storage (hundreds of
+# MB in dev), demos/ carries its own nested node_modules.
+**/node_modules
+var
+demos
+docs
+deploy
+*.md
+!src/**/*.md
+scripts/*.json
+scripts/*.sql
+.vscode
+.idea
+local_schema_dump.sql
+db;C

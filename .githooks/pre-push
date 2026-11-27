@@ -1,0 +1,21 @@
+#!/bin/sh
+# Local safety net: runs the same malware / auto-run / lockfile / secret checks
+# as CI before `git push` sends anything to GitHub. Opt-in, once per clone:
+#
+#   git config core.hooksPath .githooks
+#
+# Plain node only, nothing from node_modules runs. Skip once (not
+# recommended) with: git push --no-verify   (CI still runs every check.)
+set -e
+cd "$(git rev-parse --show-toplevel)"
+echo "pre-push: running security checks..."
+node scripts/security/check-autorun.mjs
+node scripts/security/check-malware-patterns.mjs
+node scripts/security/check-supply-chain.mjs
+if command -v gitleaks >/dev/null 2>&1; then
+  # Only the commits that are not on GitHub yet.
+  gitleaks git --no-banner --redact --config .gitleaks.toml --log-opts="--branches --not --remotes" .
+else
+  echo "pre-push: gitleaks not installed, secret scan skipped locally (CI still runs it)."
+fi
+echo "pre-push: all checks passed."

@@ -1,0 +1,17 @@
+# Caddy gets and renews the TLS certificate for API_DOMAIN automatically.
+# The domain's DNS A record must point at the instance's Elastic IP, and
+# ports 80 and 443 must be open in the security group, before first start.
+{$API_DOMAIN} {
+	encode gzip
+
+	# Attachment uploads go up to 20 MB (Full Custom); leave headroom for
+	# multipart overhead. The app enforces the real per-plan limits itself.
+	request_body {
+		max_size 25MB
+	}
+
+	reverse_proxy api:4000 {
+		# Chat answers stream; don't buffer them.
+		flush_interval -1
+	}
+}

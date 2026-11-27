@@ -1,0 +1,42 @@
+# CS-14 (audit S1-002): the malware incident rewrote commits with CRLF line
+# endings, which hid the real change inside whole-file diffs. Store text as LF
+# so a line-ending flip can no longer mask a payload in review.
+#
+# This file only sets the policy. Existing files are NOT renormalised here
+# (that would be a huge, unreviewable diff); files already committed with CRLF
+# keep it until they are next edited. A one-off `git add --renormalize .` can
+# be done later as its own reviewed commit.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary: never convert or diff as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.avif binary
+*.mp4 binary
+*.webm binary
+*.mov binary
+*.mp3 binary
+*.wav binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.wasm binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.exe binary

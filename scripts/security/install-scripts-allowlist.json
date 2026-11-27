@@ -1,0 +1,8 @@
+{
+  "_comment": "Dependencies that ship an install script. CI and the Docker image install with --ignore-scripts, so these scripts never run there; the list only exists so that a NEW dependency with an install script fails check-supply-chain.mjs and gets looked at in review. Add a package here only after reading what its install script does.",
+  "packages": {
+    "esbuild": "Used by tsx/vite. Its postinstall only verifies the platform binary that npm already installs from @esbuild/<platform>; works with --ignore-scripts.",
+    "fsevents": "macOS-only file watcher (optional dependency). Never installed on Linux CI or in Docker.",
+    "msgpackr-extract": "Optional native speed-up for bullmq's msgpackr. Prebuilt binaries come from @msgpackr-extract/<platform>; msgpackr falls back to pure JS without it."
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "chatmate360-demo-woocommerce-adapter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Phase E demo: translates ChatMate360's Backend Integration Contract (read + write) into real WooCommerce REST API v3 calls.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.3.0",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^2.1.8"
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "topics": [
+    "sku",
+    "warranty",
+    "pricing",
+    "shipping",
+    "returns",
+    "contact",
+    "hours",
+    "filter",
+    "oil",
+    "battery",
+    "privacy",
+    "install",
+    "payment",
+    "winter"
+  ],
+  "chunks": [
+    {
+      "sourceId": "parts-sku-99xz",
+      "topic": "sku",
+      "text": "Replacement cabin filter part SKU-99XZ ships next day from the midwest warehouse."
+    },
+    {
+      "sourceId": "parts-sku-12ab",
+      "topic": "sku",
+      "text": "Cabin filter housing clip SKU-12AB is sold in packs of four."
+    },
+    {
+      "sourceId": "parts-sku-4410",
+      "topic": "sku",
+      "text": "Serpentine belt SKU-4410 fits 2018-2022 compact crossovers."
+    },
+    {
+      "sourceId": "battery-sku-7701",
+      "topic": "battery",
+      "text": "AGM battery BAT-7701 is rated 70Ah and includes a 36-month replacement."
+    },
+    {
+      "sourceId": "warranty-engine",
+      "topic": "warranty",
+      "text": "Automobile warranty covers the engine for one year from the delivery date."
+    },
+    {
+      "sourceId": "warranty-powertrain",
+      "topic": "warranty",
+      "text": "Powertrain coverage lasts 3 years or 36,000 miles, whichever comes first."
+    },
+    {
+      "sourceId": "pricing-crawl-plus",
+      "topic": "pricing",
+      "text": "Crawl Plus is $20.00 per month and the included AI budget is $8.00."
+    },
+    {
+      "sourceId": "pricing-topup",
+      "topic": "pricing",
+      "text": "A $10.00 model top-up grants $4.00 of additional AI credit."
+    },
+    {
+      "sourceId": "shipping-standard",
+      "topic": "shipping",
+      "text": "Standard shipping takes 3 business days and costs $15.00 inside the contiguous US."
+    },
+    {
+      "sourceId": "shipping-express",
+      "topic": "shipping",
+      "text": "Express shipping arrives next business day for $29.00."
+    },
+    {
+      "sourceId": "returns-window",
+      "topic": "returns",
+      "text": "Unused parts may be returned within 30 days. A restocking fee of $4.99 applies."
+    },
+    {
+      "sourceId": "contact-support",
+      "topic": "contact",
+      "text": "Customer support is at support@chatmate360.test or 555-010-2030, Monday through Friday."
+    },
+    {
+      "sourceId": "hours-holiday",
+      "topic": "hours",
+      "text": "The warehouse is closed on 2026-01-15 for the mid-January holiday."
+    },
+    {
+      "sourceId": "filter-care",
+      "topic": "filter",
+      "text": "Replace the cabin air filter every 12,000 miles or once a year, whichever comes first."
+    },
+    {
+      "sourceId": "oil-interval",
+      "topic": "oil",
+      "text": "Synthetic oil changes are due every 7,500 miles for the compact crossover."
+    },
+    {
+      "sourceId": "privacy-policy",
+      "topic": "privacy",
+      "text": "Chat transcripts are stored per chatbot and are never sold to advertisers."
+    },
+    {
+      "sourceId": "install-torque",
+      "topic": "install",
+      "text": "Tighten the filter housing bolts to 8 Nm. Do not use an impact gun."
+    },
+    {
+      "sourceId": "payment-cards",
+      "topic": "payment",
+      "text": "Checkout accepts Visa, Mastercard, and American Express. We do not accept checks."
+    },
+    {
+      "sourceId": "winter-coverage",
+      "topic": "winter",
+      "text": "Cold-weather package includes a block heater and winter-grade washer fluid."
+    },
+    {
+      "sourceId": "secret-tenant-b",
+      "topic": "sku",
+      "tenant": "b",
+      "text": "Tenant B confidential SKU-99XZ internal price is $99.00 and must never leak."
+    }
+  ]
+}

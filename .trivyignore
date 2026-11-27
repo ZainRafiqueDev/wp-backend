@@ -1,0 +1,4 @@
+# Trivy findings accepted on purpose. One CVE id per line, each with a
+# comment: why it is safe here, who decided, and a review-by date.
+# Example:
+# CVE-2026-12345  # glibc, not reachable from the app; base image has no fix yet. Zain, review by 2027-01-31

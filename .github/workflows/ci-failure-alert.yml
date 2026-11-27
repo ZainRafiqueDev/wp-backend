@@ -1,0 +1,137 @@
+name: CI failure alert
+
+# Tells the owner when a check or a deployment fails.
+#
+#   - A failed / timed-out run of CI/CD, Semgrep (or CodeQL) opens a
+#     GitHub issue labelled `ci-failure`, assigned to the owner (GitHub then
+#     emails them, per their notification settings). One issue per workflow
+#     and branch: later failures add a comment instead of a new issue.
+#   - When that workflow passes again on the same branch, the issue is closed
+#     automatically with a link to the passing run.
+#   - Optional e-mail: set the four SMTP_* / ALERT_EMAIL_TO secrets (see
+#     docs/CI_PIPELINE_GUIDE.md) and every alert is also e-mailed directly.
+#
+# Security: workflow_run runs the copy of this file on main with a token that
+# can write issues, so it never checks out or runs code from the run it
+# reports on. It only reads the run's metadata, passed through env and
+# sanitised. Runs from forks are ignored (no issue spam from outside PRs).
+
+on:
+  workflow_run:
+    workflows: ["CI/CD", "Semgrep", "CodeQL", "Dependency review"]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  alert:
+    name: Open or update the failure issue
+    if: >-
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      contains(fromJSON('["failure","timed_out","startup_failure"]'), github.event.workflow_run.conclusion)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ASSIGNEE: ${{ vars.ALERT_ASSIGNEE || 'ZainRafiqueDev' }}
+      WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      RUN_EVENT: ${{ github.event.workflow_run.event }}
+      CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      ACTOR: ${{ github.event.workflow_run.actor.login }}
+      SMTP_URL: ${{ secrets.SMTP_URL }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+    steps:
+      - name: Open or update issue
+        run: |
+          set -euo pipefail
+          clean() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._/ -' | cut -c1-100; }
+          wf="$(clean "$WORKFLOW_NAME")"
+          branch="$(clean "$HEAD_BRANCH")"
+          actor="$(printf '%s' "$ACTOR" | tr -cd 'A-Za-z0-9[]-')"
+          sha="$(printf '%s' "$HEAD_SHA" | tr -cd '0-9a-f' | cut -c1-40)"
+          case "$RUN_URL" in "https://github.com/$GITHUB_REPOSITORY/actions/runs/"*) ;; *) RUN_URL="(run URL unavailable)";; esac
+          title="CI failed: $wf on $branch"
+          if [ "$branch" = "main" ]; then
+            impact="This is **main**. Any deploy/publish in this run was skipped or failed, so production should still be on the last good version. If the failing job is a deploy or the post-deploy smoke test, check the live site now."
+          else
+            impact="This is a branch / pull request, not main. Nothing was deployed. Do not merge until this check is green."
+          fi
+          body="$(cat <<EOF
+          **What failed:** the \`$wf\` workflow ($CONCLUSION) on branch \`$branch\`, commit \`${sha:0:12}\`, triggered by \`$RUN_EVENT\` from @$actor.
+
+          **Run:** $RUN_URL
+          Open it, click the job with the red ❌, then the red step, to see the reason.
+
+          **What it means:** $impact
+
+          **What to do:** see "When a check fails" in docs/CI_PIPELINE_GUIDE.md. A failing security check (malware patterns, antivirus, secret scan, audit, CodeQL) means the change must NOT be merged until someone has looked at why.
+
+          This issue closes itself when \`$wf\` passes again on \`$branch\`.
+          EOF
+          )"
+          gh label create ci-failure --repo "$GITHUB_REPOSITORY" --color B60205 \
+            --description "Opened automatically when a CI/CD run fails" 2>/dev/null || true
+          existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --label ci-failure --state open --limit 200 --json number,title \
+            | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' | head -1)"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "Failed again: $RUN_URL (commit \`${sha:0:12}\`, $RUN_EVENT by @$actor)"
+            echo "Commented on #$existing"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label ci-failure \
+              --assignee "$ASSIGNEE" --body "$body" \
+            || gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label ci-failure \
+              --body "$body
+
+          cc @$ASSIGNEE (could not assign automatically)"
+          fi
+          {
+            echo "subject=[$GITHUB_REPOSITORY] $title"
+            echo "body_line=$wf ($CONCLUSION) on $branch, commit ${sha:0:12}. Run: $RUN_URL"
+          } >> "$GITHUB_ENV"
+
+      # Optional direct e-mail, using curl's built-in SMTP (no third-party
+      # action). Only runs when all four secrets exist.
+      - name: E-mail the alert (optional)
+        if: env.SMTP_URL != '' && env.SMTP_USER != '' && env.SMTP_PASSWORD != '' && env.ALERT_EMAIL_TO != ''
+        run: |
+          set -euo pipefail
+          printf 'From: ChatMate360 CI <%s>\r\nTo: <%s>\r\nSubject: %s\r\n\r\n%s\r\n\r\nSee the ci-failure issues: https://github.com/%s/issues?q=is%%3Aopen+label%%3Aci-failure\r\n' \
+            "$SMTP_USER" "$ALERT_EMAIL_TO" "$subject" "$body_line" "$GITHUB_REPOSITORY" > "$RUNNER_TEMP/mail.txt"
+          curl --fail --silent --show-error --ssl-reqd --url "$SMTP_URL" \
+            --user "$SMTP_USER:$SMTP_PASSWORD" \
+            --mail-from "$SMTP_USER" --mail-rcpt "$ALERT_EMAIL_TO" \
+            --upload-file "$RUNNER_TEMP/mail.txt"
+
+  resolve:
+    name: Close the failure issue once the workflow passes again
+    if: >-
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+    steps:
+      - name: Close matching issue
+        run: |
+          set -euo pipefail
+          clean() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._/ -' | cut -c1-100; }
+          title="CI failed: $(clean "$WORKFLOW_NAME") on $(clean "$HEAD_BRANCH")"
+          case "$RUN_URL" in "https://github.com/$GITHUB_REPOSITORY/actions/runs/"*) ;; *) RUN_URL="(run URL unavailable)";; esac
+          for n in $(gh issue list --repo "$GITHUB_REPOSITORY" --label ci-failure --state open --limit 200 --json number,title \
+                     | jq -r --arg t "$title" '.[] | select(.title == $t) | .number'); do
+            gh issue close "$n" --repo "$GITHUB_REPOSITORY" --reason completed --comment "Passing again: $RUN_URL"
+            echo "Closed #$n"
+          done

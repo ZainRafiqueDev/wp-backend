@@ -1,0 +1,30 @@
+[
+  {
+    "keywords": ["hello", "hi", "hey"],
+    "reply": "Hi — I'm Mia, Chatmate360's demo assistant. Ask about orders, pricing, or how the product works."
+  },
+  {
+    "keywords": ["order", "tracking", "shipment", "delivery"],
+    "reply": "Your latest order #4821 shipped this morning and should arrive Thursday. I can also help with returns or address changes."
+  },
+  {
+    "keywords": ["price", "pricing", "plan", "cost"],
+    "reply": "Starter is $29/mo billed annually, Growth is $99/mo, and Business is $249/mo. Every plan includes a 14-day trial — no card needed."
+  },
+  {
+    "keywords": ["trial", "free"],
+    "reply": "You can start a 14-day free trial with no credit card. When you're ready, pick Starter, Growth, or Business."
+  },
+  {
+    "keywords": ["human", "agent", "handoff", "person"],
+    "reply": "If a question needs a person, I pass the full chat history to your team so they can pick up without asking the customer to repeat themselves."
+  },
+  {
+    "keywords": ["integration", "shopify", "slack", "hubspot", "zendesk"],
+    "reply": "Chatmate360 connects to tools like Shopify, Slack, HubSpot, and Zendesk. Most teams plug in their stack in a few minutes."
+  },
+  {
+    "keywords": ["return", "refund"],
+    "reply": "I can start a return from this chat. For order #4821, prepaid labels are available for 30 days after delivery."
+  }
+]

@@ -1,0 +1,34 @@
+version: 2
+# CS-14 (audit S2-012): Dependabot volume was the main cause of "CI keeps
+# re-running" — 15 branches opened in 5 minutes, each running the full
+# pipeline, several of them major bumps expected to fail. Now: one grouped PR
+# per week for all minor/patch bumps, low open-PR limits, no automatic
+# rebasing (each rebase re-runs CI). Majors still get their own PR so they are
+# reviewed individually. Security updates are not limited by these settings.
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    rebase-strategy: "disabled"
+    commit-message:
+      prefix: "deps"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 2
+    rebase-strategy: "disabled"
+    commit-message:
+      prefix: "ci"
+    groups:
+      # Also keeps SHA pins (`uses: x@<sha> # vX.Y.Z`) up to date.
+      github-actions:
+        patterns: ["*"]

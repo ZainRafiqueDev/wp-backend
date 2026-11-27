@@ -1,0 +1,45 @@
+# Runs the production stack WITHOUT ClamAV, to free its memory (about 1.2 GB,
+# and up to about 2.5 GB while it reloads signatures).
+#
+# Nothing unscanned is ever accepted:
+#   - document uploads are refused with HTTP 503 ("Document uploads are paused
+#     while malware scanning is unavailable.") through DOCUMENT_SCAN_PAUSE_UPLOADS;
+#   - chat attachments are switched off for every plan by the same flag: the
+#     widget config reports them disabled (so the widget hides its attach
+#     button) and uploads get HTTP 503 ("File attachments are turned off for
+#     now."). If anything still reached the scanner it would fail closed,
+#     because DOCUMENT_SCAN_VENDOR stays "clamav" and no clamd answers.
+# The frontend hides attachments separately: leave
+# NEXT_PUBLIC_CHAT_ATTACHMENTS_ENABLED unset on Vercel while this is in use.
+# Never set DOCUMENT_SCAN_VENDOR=mock or ALLOW_MOCK_MALWARE_SCAN_IN_PRODUCTION
+# to work around this.
+#
+# Turn ClamAV OFF (from the repo root on the EC2 host):
+#   docker compose -f deploy/aws/docker-compose.prod.yml -f deploy/aws/docker-compose.no-clamav.yml --env-file .env.production up -d
+#   docker compose -f deploy/aws/docker-compose.prod.yml -f deploy/aws/docker-compose.no-clamav.yml --env-file .env.production rm -sf clamav
+#
+# Turn ClamAV back ON (the signatures stay in the clamav-data volume, so it
+# starts in a minute or two rather than re-downloading everything):
+#   docker compose -f deploy/aws/docker-compose.prod.yml --env-file .env.production up -d
+#
+# Needs Docker Compose v2.24 or later for the !override tag.
+
+services:
+  api:
+    environment:
+      DOCUMENT_SCAN_PAUSE_UPLOADS: "true"
+    # The API no longer waits for ClamAV to be healthy.
+    depends_on: !reset {}
+
+  worker:
+    environment:
+      DOCUMENT_SCAN_PAUSE_UPLOADS: "true"
+    # Keep the dependency on the API, drop the one on ClamAV.
+    depends_on: !override
+      api:
+        condition: service_started
+
+  clamav:
+    # Only started when the "scan" profile is asked for, so `up -d` with this
+    # file leaves it off.
+    profiles: ["scan"]

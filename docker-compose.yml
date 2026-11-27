@@ -1,0 +1,115 @@
+# LOCAL DEVELOPMENT ONLY. Never run this file on a server: it uses the
+# password "postgres" and a Redis with no password. Ports are bound to
+# 127.0.0.1 so they can't be reached from other machines even if someone
+# does (Docker-published ports bypass ufw, so a host firewall alone would
+# not stop that). Production uses deploy/aws/docker-compose.prod.yml.
+services:
+  postgres:
+    # pgvector/pgvector:pg16 — a drop-in postgres:16 image that additionally
+    # ships the pgvector extension (see db/schema.sql's `create extension
+    # if not exists vector`), needed by product_catalog_cache.embedding for
+    # the Full Custom WooCommerce commerce pipeline's product search. Same
+    # image otherwise; nothing else about this service changed.
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: chatmate360
+    ports:
+      # Host port 5435, not 5432 — a native/other Postgres instance may
+      # already own 5432 (or nearby ports) on the host. Matches DATABASE_URL
+      # in .env.example.
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  # Backs the crawl job queue (src/lib/queue.ts, src/worker.ts) and public
+  # widget chat rate limiting (src/middleware/rateLimitPublic.ts).
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+
+  # Transaction pooling in front of Postgres. SET LOCAL tenant GUCs in
+  # src/lib/db.ts run inside BEGIN/COMMIT per query, so they survive this
+  # pool_mode. Point DATABASE_URL at localhost:6432 in production; tests
+  # keep talking to Postgres on 5435 directly.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/chatmate360
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "25"
+      RESERVE_POOL_SIZE: "5"
+      SERVER_IDLE_TIMEOUT: "600"
+    ports:
+      - "127.0.0.1:6432:5432"
+    depends_on:
+      - postgres
+
+  # Real malware scanner for src/services/malwareScan.service.ts (document
+  # ingestion + Phase 3 chat attachments) — see docs/MALWARE_SCAN.md and
+  # docs/deploy-checklist-phase1-3.md §7.4. Pinned to a feature release
+  # (1.4), not `latest`/`stable`/`unstable`, per the official docs' own
+  # recommendation. `_base` has no baked-in signature database — it expects
+  # one to be built into the mounted volume by freshclam on first start,
+  # which is why the volume below is required, not optional, and why first
+  # boot takes several minutes (start_period reflects that).
+  #
+  # Minimum RAM: 3 GiB (4 GiB preferred) per docs.clamav.net — the signature
+  # database loads entirely into memory. Undersized hosts (2 GiB or less)
+  # are documented as insufficient and will OOM-kill this container
+  # (exit 137), not fail gracefully.
+  #
+  # To point the backend at this instead of the DOCUMENT_SCAN_VENDOR=mock
+  # default, set in your .env: DOCUMENT_SCAN_VENDOR=clamav,
+  # DOCUMENT_SCAN_CLAMD_HOST=127.0.0.1, DOCUMENT_SCAN_CLAMD_PORT=3310 (the
+  # published port below) — see .env.example.
+  clamav:
+    image: clamav/clamav:1.4_base
+    environment:
+      # Default is already "runs" (false) — set explicitly so the intent is
+      # visible here rather than relying on an unstated image default.
+      CLAMAV_NO_FRESHCLAMD: "false"
+    ports:
+      - "127.0.0.1:3310:3310"
+    volumes:
+      - clamav-data:/var/lib/clamav
+    healthcheck:
+      # clamdcheck.sh ships in the image itself (clamav-docker's Alpine
+      # scripts/) and only succeeds once clamd is both running AND has a
+      # loaded signature database — exactly the "actually ready" signal
+      # api/worker need, not just "the process started". Known upstream
+      # issue: this script can misbehave on hosts where "localhost"
+      # resolves to IPv6 first (Cisco-Talos/clamav-docker#52/#53) — if this
+      # healthcheck flaps on such a host, that's the first thing to check.
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # First boot has to freshclam the full signature database into the
+      # (initially empty) mounted volume before clamd can even start —
+      # observed to take several minutes, not seconds.
+      start_period: 300s
+    restart: unless-stopped
+
+# NOTE on "wait for healthy": api and worker are NOT services in this
+# compose file (local dev runs `npm run dev` / `npm run worker:start`
+# directly on the host against these containers; production runs them as
+# separate Railway services — see DEPLOYMENT.md). That means Compose's own
+# `depends_on: condition: service_healthy` has nothing to attach to here.
+# Use scripts/wait-for-clamav.sh before starting either process locally if
+# you want the same effect; the running application doesn't need this to
+# be correct either way, since malwareScan.service.ts already fails closed
+# per-request when clamd is unreachable (confirmed in
+# docs/deploy-checklist-phase1-3.md §7.4) — waiting is a startup-UX
+# convenience, not a safety requirement.
+
+volumes:
+  postgres-data:
+  redis-data:
+  clamav-data:

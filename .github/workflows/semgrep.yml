@@ -1,0 +1,58 @@
+name: Semgrep
+
+# Static analysis (SAST) that works on private repositories without paid
+# GitHub Code Security (CodeQL needs that on private repos). Semgrep CE
+# reads the source and flags security bugs: XSS, injection, SSRF, open
+# redirects, unsafe eval, hard-coded secrets, insecure Express/Node
+# patterns and unsafe GitHub Actions workflows.
+#
+# Blocking: findings Semgrep rates ERROR (high confidence / high impact).
+# Everything is listed in the log. A real false positive can be silenced on
+# that line with a `// nosemgrep: <rule-id>` comment plus a reason, which then
+# shows up in review.
+#
+# Runs in the official Semgrep image pinned by digest, with no access to
+# secrets and a read-only token. --metrics=off: nothing about the code is sent
+# to Semgrep; only the public rule packs are downloaded.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 1" # Mondays 03:17 UTC: picks up new rules
+
+permissions:
+  contents: read
+
+concurrency:
+  group: semgrep-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  semgrep:
+    name: Semgrep code scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: semgrep/semgrep@sha256:cc1b68266f267878b39739373ea9985b9a78e5d64497dd875c8de100b22695ed # 1.184.0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Scan (all findings, informational)
+        run: |
+          semgrep scan --metrics=off \
+            --config p/javascript --config p/typescript --config p/owasp-top-ten \
+            --config p/nodejs --config p/secrets \
+            --config p/github-actions || true
+
+      - name: Scan (blocking on ERROR severity)
+        run: |
+          semgrep scan --metrics=off --error --severity ERROR \
+            --config p/javascript --config p/typescript --config p/owasp-top-ten \
+            --config p/nodejs --config p/secrets \
+            --config p/github-actions

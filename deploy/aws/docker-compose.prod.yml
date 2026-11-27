@@ -1,0 +1,111 @@
+# Production stack for a single EC2 host: API + crawl worker + ClamAV,
+# behind Caddy (automatic HTTPS). Postgres and Redis are external
+# (Neon/RDS and Upstash/ElastiCache) and come in through .env.production.
+#
+# Usage (from the repo root on the EC2 host):
+#   docker compose -f deploy/aws/docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# See docs/deploy-aws-ec2.md for the full runbook.
+
+services:
+  api:
+    # Slim image without Playwright browsers (see the Dockerfile's targets).
+    build:
+      context: ../..
+      target: api
+    image: chatmate360-backend-api:latest
+    command: ["node", "--import", "tsx", "src/index.ts"]
+    env_file: ../../.env.production
+    environment:
+      NODE_ENV: production
+      # Caps the V8 heap so the API garbage-collects instead of growing until
+      # the host swaps. Keep it well under mem_limit below.
+      NODE_OPTIONS: "--max-old-space-size=512"
+      PORT: "4000"
+      # Caddy is the only proxy in front of the API.
+      TRUST_PROXY_HOPS: "1"
+      DOCUMENT_SCAN_CLAMD_HOST: clamav
+      DOCUMENT_SCAN_CLAMD_PORT: "3310"
+    depends_on:
+      clamav:
+        condition: service_healthy
+    restart: unless-stopped
+    # Not published on the host: only Caddy reaches it, over the compose network.
+    expose:
+      - "4000"
+    # Hard ceiling so a leak or a huge request in one service can't starve
+    # ClamAV or the host. Sized for a t3.large (8 GiB); see the runbook.
+    mem_limit: 1g
+    # Container logs are capped at 3 x 10 MB per service (~120 MB total for
+    # the whole stack) instead of growing until the disk fills.
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  worker:
+    # Full image: the crawler needs Playwright's Chromium.
+    build:
+      context: ../..
+      target: full
+    image: chatmate360-backend-worker:latest
+    command: ["node", "--import", "tsx", "src/worker.ts"]
+    env_file: ../../.env.production
+    environment:
+      NODE_ENV: production
+      NODE_OPTIONS: "--max-old-space-size=768"
+      DOCUMENT_SCAN_CLAMD_HOST: clamav
+      DOCUMENT_SCAN_CLAMD_PORT: "3310"
+    depends_on:
+      api:
+        condition: service_started
+      clamav:
+        condition: service_healthy
+    restart: unless-stopped
+    # Node heap plus headless Chromium for JS-rendered crawls.
+    mem_limit: 2g
+    # Chromium uses /dev/shm; Docker's 64 MB default makes it crash on big pages.
+    shm_size: "256m"
+    logging: *logging
+
+  clamav:
+    image: clamav/clamav:1.4_base
+    environment:
+      CLAMAV_NO_FRESHCLAMD: "false"
+    volumes:
+      - clamav-data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # First boot downloads the full signature database before clamd starts.
+      start_period: 300s
+    restart: unless-stopped
+    # ClamAV holds its signature DB in memory (~1.2 GB) and briefly needs
+    # about twice that while reloading after a signature update.
+    mem_limit: 3500m
+    logging: *logging
+
+  caddy:
+    image: caddy:2.8
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env.production}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *logging
+
+volumes:
+  clamav-data:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,375 @@
+{
+  "phase": "after",
+  "generatedAt": "2026-09-22T16:09:25.890Z",
+  "sourceProof": {
+    "chatbotId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    "chatbotName": "Acme Web Dev Diagnostic",
+    "status": "ready",
+    "sourceCount": 1,
+    "webDevelopmentRelatedSources": [
+      {
+        "label": "acme-diagnostic.example",
+        "url": "https://acme-diagnostic.example/",
+        "contentPreview": "Acme Co offers web development for small businesses. Contact us for a quote."
+      }
+    ]
+  },
+  "pipelineNote": "Crawled website pages are NOT retrieved via pgvector — they are converted to pages and keyword-gated, then stuffed into the LLM prompt. pgvector is only for uploaded document chunks (paid plans) and product catalog.",
+  "traces": [
+    {
+      "originalQuery": "web development",
+      "expect": "positive",
+      "conversationContext": [],
+      "transformedQuery": null,
+      "questionMeaningfulWords": [
+        "development"
+      ],
+      "scopeDecision": {
+        "relevanceGate": "IN_SCOPE_KEYWORD_OVERLAP",
+        "note": "Pre-LLM gate is hasRelevantContent() — keyword overlap, not semantic scope"
+      },
+      "matchingPages": [
+        {
+          "path": "https://acme-diagnostic.example/",
+          "matchedWords": [
+            "development"
+          ]
+        }
+      ],
+      "documentIngestionEnabled": false,
+      "documentChunksInjected": [],
+      "pgvector": {
+        "embeddingModel": "text-embedding-3-small",
+        "note": "no document chunks for this chatbot (crawled-page path only)",
+        "candidates": []
+      },
+      "similarityThreshold": "none — document path uses ORDER BY distance LIMIT K only; crawled pages are not retrieved via pgvector",
+      "groundingCheck": {
+        "ok": true,
+        "failedClaims": []
+      },
+      "finalAnswer": {
+        "text": "Acme Co offers web development services specifically for small businesses. If you're interested in getting a quote, you can contact them directly for more information.",
+        "aiGenerated": true,
+        "gateReason": null,
+        "looksLikeFallback": false,
+        "looksLikeInsufficientInfo": false
+      },
+      "elapsedMs": 1548,
+      "failureClassification": [
+        "PASS"
+      ]
+    },
+    {
+      "originalQuery": "web dev",
+      "expect": "positive",
+      "conversationContext": [],
+      "transformedQuery": null,
+      "questionMeaningfulWords": [],
+      "scopeDecision": {
+        "relevanceGate": "IN_SCOPE_KEYWORD_OVERLAP",
+        "note": "Pre-LLM gate is hasRelevantContent() — keyword overlap, not semantic scope"
+      },
+      "matchingPages": [],
+      "documentIngestionEnabled": false,
+      "documentChunksInjected": [],
+      "pgvector": {
+        "embeddingModel": "text-embedding-3-small",
+        "note": "no document chunks for this chatbot (crawled-page path only)",
+        "candidates": []
+      },
+      "similarityThreshold": "none — document path uses ORDER BY distance LIMIT K only; crawled pages are not retrieved via pgvector",
+      "groundingCheck": {
+        "ok": true,
+        "failedClaims": []
+      },
+      "finalAnswer": {
+        "text": "It looks like you're interested in web development. Acme Co offers web development services specifically for small businesses. If you have any specific questions about their services or would like to know more, feel free to ask!",
+        "aiGenerated": true,
+        "gateReason": null,
+        "looksLikeFallback": false,
+        "looksLikeInsufficientInfo": false
+      },
+      "elapsedMs": 1578,
+      "failureClassification": [
+        "PASS"
+      ]
+    },
+    {
+      "originalQuery": "website development",
+      "expect": "positive",
+      "conversationContext": [],
+      "transformedQuery": null,
+      "questionMeaningfulWords": [
+        "website",
+        "development"
+      ],
+      "scopeDecision": {
+        "relevanceGate": "IN_SCOPE_KEYWORD_OVERLAP",
+        "note": "Pre-LLM gate is hasRelevantContent() — keyword overlap, not semantic scope"
+      },
+      "matchingPages": [
+        {
+          "path": "https://acme-diagnostic.example/",
+          "matchedWords": [
+            "development"
+          ]
+        }
+      ],
+      "documentIngestionEnabled": false,
+      "documentChunksInjected": [],
+      "pgvector": {
+        "embeddingModel": "text-embedding-3-small",
+        "note": "no document chunks for this chatbot (crawled-page path only)",
+        "candidates": []
+      },
+      "similarityThreshold": "none — document path uses ORDER BY distance LIMIT K only; crawled pages are not retrieved via pgvector",
+      "groundingCheck": {
+        "ok": true,
+        "failedClaims": []
+      },
+      "finalAnswer": {
+        "text": "It looks like you're interested in website development. Acme Co specializes in web development for small businesses. If you need a quote or more information about their services, you can contact them directly.",
+        "aiGenerated": true,
+        "gateReason": null,
+        "looksLikeFallback": false,
+        "looksLikeInsufficientInfo": false
+      },
+      "elapsedMs": 1387,
+      "failureClassification": [
+        "PASS"
+      ]
+    },
+    {
+      "originalQuery": "do you build websites?",
+      "expect": "positive",
+      "conversationContext": [],
+      "transformedQuery": null,
+      "questionMeaningfulWords": [
+        "build",
+        "websites"
+      ],
+      "scopeDecision": {
+        "relevanceGate": "IN_SCOPE_KEYWORD_OVERLAP",
+        "note": "Pre-LLM gate is hasRelevantContent() — keyword overlap, not semantic scope"
+      },
+      "matchingPages": [],
+      "documentIngestionEnabled": false,
+      "documentChunksInjected": [],
+      "pgvector": {
+        "embeddingModel": "text-embedding-3-small",
+        "note": "no document chunks for this chatbot (crawled-page path only)",
+        "candidates": []
+      },
+      "similarityThreshold": "none — document path uses ORDER BY distance LIMIT K only; crawled pages are not retrieved via pgvector",
+      "groundingCheck": {
+        "ok": true,
+        "failedClaims": []
+      },
+      "finalAnswer": {
+        "text": "Yes, Acme Co offers web development services specifically for small businesses. If you're interested, you can contact them for a quote.",
+        "aiGenerated": true,
+        "gateReason": null,
+        "looksLikeFallback": false,
+        "looksLikeInsufficientInfo": false
+      },
+      "elapsedMs": 1045,
+      "failureClassification": [
+        "PASS"
+      ]
+    },
+    {
+      "originalQuery": "do you make sites?",
+      "expect": "positive",
+      "conversationContext": [],
+      "transformedQuery": null,
+      "questionMeaningfulWords": [
+        "make",
+        "sites"
+      ],
+      "scopeDecision": {
+        "relevanceGate": "IN_SCOPE_KEYWORD_OVERLAP",
+        "note": "Pre-LLM gate is hasRelevantContent() — keyword overlap, not semantic scope"
+      },
+      "matchingPages": [],
+      "documentIngestionEnabled": false,
+      "documentChunksInjected": [],
+      "pgvector": {
+        "embeddingModel": "text-embedding-3-small",
+        "note": "no document chunks for this chatbot (crawled-page path only)",
+        "candidates": []
+      },
+      "similarityThreshold": "none — document path uses ORDER BY distance LIMIT K only; crawled pages are not retrieved via pgvector",
+      "groundingCheck": {
+        "ok": true,
+        "failedClaims": []
+      },
+      "finalAnswer": {
+        "text": "Yes, Acme Co offers web development services specifically for small businesses. If you're interested, you can contact us for a quote.",
+        "aiGenerated": true,
+        "gateReason": null,
+        "looksLikeFallback": false,
+        "looksLikeInsufficientInfo": false
+      },
+      "elapsedMs": 1018,
+      "failureClassification": [
+        "PASS"
+      ]
+    },
+    {
+      "originalQuery": "what web services do you provide?",
+      "expect": "positive",
+      "conversationContext": [],
+      "transformedQuery": null,
+      "questionMeaningfulWords": [
+        "services",
+        "provide"
+      ],
+      "scopeDecision": {
+        "relevanceGate": "IN_SCOPE_KEYWORD_OVERLAP",
+        "note": "Pre-LLM gate is hasRelevantContent() — keyword overlap, not semantic scope"
+      },
+      "matchingPages": [],
+      "documentIngestionEnabled": false,
+      "documentChunksInjected": [],
+      "pgvector": {
+        "embeddingModel": "text-embedding-3-small",
+        "note": "no document chunks for this chatbot (crawled-page path only)",
+        "candidates": []
+      },
+      "similarityThreshold": "none — document path uses ORDER BY distance LIMIT K only; crawled pages are not retrieved via pgvector",
+      "groundingCheck": {
+        "ok": true,
+        "failedClaims": []
+      },
+      "finalAnswer": {
+        "text": "Acme Co offers web development services specifically for small businesses. If you're interested in a quote or more details, feel free to reach out!",
+        "aiGenerated": true,
+        "gateReason": null,
+        "looksLikeFallback": false,
+        "looksLikeInsufficientInfo": false
+      },
+      "elapsedMs": 1073,
+      "failureClassification": [
+        "PASS"
+      ]
+    },
+    {
+      "originalQuery": "what is the weather tomorrow?",
+      "expect": "negative",
+      "conversationContext": [],
+      "transformedQuery": null,
+      "questionMeaningfulWords": [
+        "weather",
+        "tomorrow"
+      ],
+      "scopeDecision": {
+        "relevanceGate": "OUT_OF_SCOPE_NO_KEYWORD_OVERLAP",
+        "note": "Pre-LLM gate is hasRelevantContent() — keyword overlap, not semantic scope"
+      },
+      "matchingPages": [],
+      "documentIngestionEnabled": false,
+      "documentChunksInjected": [],
+      "pgvector": {
+        "embeddingModel": "text-embedding-3-small",
+        "note": "no document chunks for this chatbot (crawled-page path only)",
+        "candidates": []
+      },
+      "similarityThreshold": "none — document path uses ORDER BY distance LIMIT K only; crawled pages are not retrieved via pgvector",
+      "groundingCheck": {
+        "ok": true,
+        "failedClaims": [],
+        "skipped": true
+      },
+      "finalAnswer": {
+        "text": "I can only help with questions about Acme Web Dev Diagnostic. For anything else, please reach out to their team directly.",
+        "aiGenerated": false,
+        "gateReason": null,
+        "looksLikeFallback": true,
+        "looksLikeInsufficientInfo": false
+      },
+      "elapsedMs": 23,
+      "failureClassification": [
+        "negative_control_ok"
+      ]
+    },
+    {
+      "originalQuery": "who won the world cup in 2018?",
+      "expect": "negative",
+      "conversationContext": [],
+      "transformedQuery": null,
+      "questionMeaningfulWords": [
+        "world",
+        "2018"
+      ],
+      "scopeDecision": {
+        "relevanceGate": "OUT_OF_SCOPE_NO_KEYWORD_OVERLAP",
+        "note": "Pre-LLM gate is hasRelevantContent() — keyword overlap, not semantic scope"
+      },
+      "matchingPages": [],
+      "documentIngestionEnabled": false,
+      "documentChunksInjected": [],
+      "pgvector": {
+        "embeddingModel": "text-embedding-3-small",
+        "note": "no document chunks for this chatbot (crawled-page path only)",
+        "candidates": []
+      },
+      "similarityThreshold": "none — document path uses ORDER BY distance LIMIT K only; crawled pages are not retrieved via pgvector",
+      "groundingCheck": {
+        "ok": true,
+        "failedClaims": [],
+        "skipped": true
+      },
+      "finalAnswer": {
+        "text": "I can only help with questions about Acme Web Dev Diagnostic. For anything else, please reach out to their team directly.",
+        "aiGenerated": false,
+        "gateReason": null,
+        "looksLikeFallback": true,
+        "looksLikeInsufficientInfo": false
+      },
+      "elapsedMs": 28,
+      "failureClassification": [
+        "negative_control_ok"
+      ]
+    },
+    {
+      "originalQuery": "What programming languages do your web developers use?",
+      "expect": "in_scope_maybe_insufficient",
+      "conversationContext": [],
+      "transformedQuery": null,
+      "questionMeaningfulWords": [
+        "programming",
+        "languages",
+        "developers"
+      ],
+      "scopeDecision": {
+        "relevanceGate": "IN_SCOPE_KEYWORD_OVERLAP",
+        "note": "Pre-LLM gate is hasRelevantContent() — keyword overlap, not semantic scope"
+      },
+      "matchingPages": [],
+      "documentIngestionEnabled": false,
+      "documentChunksInjected": [],
+      "pgvector": {
+        "embeddingModel": "text-embedding-3-small",
+        "note": "no document chunks for this chatbot (crawled-page path only)",
+        "candidates": []
+      },
+      "similarityThreshold": "none — document path uses ORDER BY distance LIMIT K only; crawled pages are not retrieved via pgvector",
+      "groundingCheck": {
+        "ok": true,
+        "failedClaims": []
+      },
+      "finalAnswer": {
+        "text": "I don't have that information here. You might want to contact Acme Co directly for details about the programming languages their web developers use.",
+        "aiGenerated": true,
+        "gateReason": null,
+        "looksLikeFallback": false,
+        "looksLikeInsufficientInfo": true
+      },
+      "elapsedMs": 1084,
+      "failureClassification": [
+        "E. Prompt/answer-generation (declined) or A/D — acceptable if no fabrication"
+      ]
+    }
+  ]
+}

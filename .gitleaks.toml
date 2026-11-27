@@ -1,0 +1,25 @@
+title = "gitleaks config for Chatmate360-Backend"
+
+[extend]
+useDefault = true
+
+# Known false positive: WooCommerce's `order_key` is a per-order token used
+# to build a "pay for this order" URL, not an API credential — gitleaks'
+# generic-api-key rule fires on it purely because the variable is named
+# `key`. This is synthetic test data (tests/unit/woocommerce/connector.test.ts),
+# never a real secret, and never used against a real WooCommerce store.
+#
+# Known false positive: tests/unit/sentry.test.ts's scrubEvent tests deliberately
+# embed Stripe-secret-key- and webhook-secret-shaped literals to prove the
+# redaction regex actually matches and strips them — the test would be
+# meaningless without a string in the real sk_live_.../whsec_... shape. Fake,
+# never used against a real Stripe account.
+[allowlist]
+regexes = [
+  '''wc_order_abc123''',
+  '''sk_live_abc123def456''',
+  '''whsec_abcdef123456''',
+  # CS-10: tests/unit/logRedaction.test.ts canary proving Stripe-key-shaped
+  # values are redacted from logs. Fake; matches only this exact string.
+  '''sk_live_CANARYSTRIPE123''',
+]
