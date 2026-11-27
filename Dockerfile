@@ -46,7 +46,13 @@ FROM mcr.microsoft.com/playwright:v1.62.1-jammy AS full
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+# After installing, npm/npx/yarn/corepack are removed from this image: the
+# worker only needs `node`, and the Playwright base ships an npm whose bundled
+# tar had a CRITICAL CVE (CVE-2026-59873) that blocked the Trivy image scan.
+# Fewer tools in the image also means less for an attacker to use.
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force \
+  && rm -rf /usr/lib/node_modules/npm /usr/lib/node_modules/yarn /usr/lib/node_modules/corepack \
+     /usr/bin/npm /usr/bin/npx /usr/bin/yarn /usr/bin/yarnpkg /usr/bin/corepack /root/.npm
 
 COPY . .
 
